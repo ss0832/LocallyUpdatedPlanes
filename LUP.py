@@ -39,6 +39,7 @@ def parser():
     parser.add_argument("-core", "--N_THREAD",  type=int, default='8', help='threads')
     parser.add_argument("-mem", "--SET_MEMORY",  type=str, default='1GB', help='use mem(ex. 1GB)')
     parser.add_argument("-cineb", "--apply_CI_NEB",  type=int, default='99999', help='apply CI_NEB method')
+    parser.add_argument("-sd", "--steepest_descent",  type=int, default='99999', help='apply steepest_descent method')
     parser.add_argument("-xtb", "--usextb",  type=str, default="None", help='use extended tight bonding method to calculate. default is not using extended tight binding method (ex.) GFN1-xTB, GFN2-xTB ')
     args = parser.parse_args()
     return args
@@ -66,7 +67,7 @@ class LUP:
         #please input psi4 inputfile.
 
         self.spring_constant_k = 0.01
-
+        self.bohr2angstroms = 0.52917721067
         self.hartree2kcalmol = 627.509
         #parameter_for_FIRE_method
         self.FIRE_dt = 0.1
@@ -80,7 +81,7 @@ class LUP:
         self.start_folder = args.INPUT
 
         self.usextb = args.usextb
-        
+        self.sd = args.steepest_descent
         
         if args.usextb == "None":
             self.NEB_FOLDER_DIRECTORY = args.INPUT+"_LUP_"+self.basic_set_and_function.replace("/","_")+"_"+str(time.time())+"/"
@@ -184,7 +185,7 @@ class LUP:
 
         return
         
-    def psi4_calculation(self, file_directory, optimize_num, fixing_geom_structure_num,pre_total_velocity):
+    def psi4_calculation(self, file_directory, optimize_num, pre_total_velocity):
         psi4.core.clean()
         gradient_list = []
         gradient_norm_list = []
@@ -263,11 +264,11 @@ class LUP:
                 pre_total_velocity.pop(i)
             pre_total_velocity = np.array(pre_total_velocity, dtype="float64")
 
-        return np.array(energy_list, dtype = "float64"), np.array(gradient_list, dtype = "float64"), np.array(geometry_num_list, dtype = "float64"), fixing_geom_structure_num, pre_total_velocity
+        return np.array(energy_list, dtype = "float64"), np.array(gradient_list, dtype = "float64"), np.array(geometry_num_list, dtype = "float64"), pre_total_velocity
 
 
     
-    def tblite_calculation(self, file_directory, optimize_num, fixing_geom_structure_num, pre_total_velocity, element_number_list):
+    def tblite_calculation(self, file_directory, optimize_num, pre_total_velocity, element_number_list):
         #execute extended tight binding method calclation.
         gradient_list = []
         energy_list = []
@@ -292,7 +293,7 @@ class LUP:
                 for word in input_data[1:]:
                     positions.append(word.split()[1:4])
                         
-                positions = np.array(positions, dtype="float64") / psi4.constants.bohr2angstroms
+                positions = np.array(positions, dtype="float64") / self.bohr2angstroms
                 calc = Calculator(self.usextb, element_number_list, positions)
                 calc.set("max-iter", 500)
                 calc.set("verbosity", 1)
@@ -333,7 +334,7 @@ class LUP:
                 pre_total_velocity.pop(i)
             pre_total_velocity = np.array(pre_total_velocity, dtype="float64")
 
-        return np.array(energy_list, dtype = "float64"), np.array(gradient_list, dtype = "float64"), np.array(geometry_num_list, dtype = "float64"), fixing_geom_structure_num, pre_total_velocity
+        return np.array(energy_list, dtype = "float64"), np.array(gradient_list, dtype = "float64"), np.array(geometry_num_list, dtype = "float64"), pre_total_velocity
 
     
 
@@ -372,7 +373,7 @@ class LUP:
         return local_max_energy_list_index, local_min_energy_list_index
 
 
-    def LUP_calc(self, geometry_num_list, energy_list, gradient_list, element_list, optimize_num):
+    def LUP_calc(self, geometry_num_list, energy_list, gradient_list, optimize_num):
         local_max_energy_list_index, local_min_energy_list_index = self.extremum_list_index(energy_list)
 
         total_force_list = [((-1)*np.array(gradient_list[0], dtype = "float64")).tolist()]
@@ -532,16 +533,41 @@ class LUP:
                 move_vector.append(total_delta[i])
         move_vector.append(total_delta[-1])
         #--------------------
-        new_geometory = (geometry_num_list + move_vector)*psi4.constants.bohr2angstroms
+        new_geometory = (geometry_num_list + move_vector)*self.bohr2angstroms
          
         return new_geometory, dt, n_reset, a
+
+    def SD_calc(self, geometry_num_list, total_force_list):
+        total_delta = []
+        delta = 0.5
+        for i in range(len(total_force_list)):
+            total_delta.append(delta*total_force_list[i])
+
+        #---------------------
+        move_vector = [total_delta[0]]
+        
+        for i in range(1, len(total_delta)-1):
+            trust_radii_1 = np.linalg.norm(geometry_num_list[i] - geometry_num_list[i-1]) / 2.0
+            trust_radii_2 = np.linalg.norm(geometry_num_list[i] - geometry_num_list[i+1]) / 2.0
+            if np.linalg.norm(total_delta[i]) > trust_radii_1:
+                move_vector.append(total_delta[i]*trust_radii_1/np.linalg.norm(total_delta[i]))
+            elif np.linalg.norm(total_delta[i]) > trust_radii_2:
+                move_vector.append(total_delta[i]*trust_radii_2/np.linalg.norm(total_delta[i]))
+            else:
+                move_vector.append(total_delta[i])
+        move_vector.append(total_delta[-1])
+        #--------------------
+        new_geometory = (geometry_num_list + move_vector)*self.bohr2angstroms
+
+        return new_geometory
+
 
     def main(self):
         
         geometry_list, element_list, electric_charge_and_multiplicity = self.make_geometry_list(self.start_folder, self.partition)
         file_directory = self.make_psi4_input_file(geometry_list,0)
         pre_total_velocity = [[[]]]
-        fixing_geom_structure_num = []
+       
         #prepare for FIRE method
         dt = 0.5
         n_reset = 0
@@ -557,20 +583,24 @@ class LUP:
         
         for optimize_num in range(self.NEB_NUM):
             print("\n\n\nLUP:   "+str(optimize_num+1)+" time(s) \n\n\n")
-            self.xyz_file_make(file_directory)    
+            self.xyz_file_make(file_directory)
+            #------------------
             if args.usextb == "None":
-                energy_list, gradient_list, geometry_num_list, fixing_geom_structure_num, pre_total_velocity = self.psi4_calculation(file_directory, fixing_geom_structure_num,pre_total_velocity )
+                energy_list, gradient_list, geometry_num_list, pre_total_velocity = self.psi4_calculation(file_directory,optimize_num, pre_total_velocity)
             else:
-                energy_list, gradient_list, geometry_num_list, fixing_geom_structure_num, pre_total_velocity = self.tblite_calculation(file_directory, optimize_num,fixing_geom_structure_num,pre_total_velocity, element_number_list )
+                energy_list, gradient_list, geometry_num_list, pre_total_velocity = self.tblite_calculation(file_directory, optimize_num,pre_total_velocity, element_number_list)
+            #------------------
             
+            total_force = self.LUP_calc(geometry_num_list,energy_list, gradient_list, optimize_num)
             
-            total_force = self.LUP_calc(geometry_num_list,energy_list, gradient_list, element_list, optimize_num)
-           
-            total_velocity = self.force2velocity(total_force, element_list)
-            for i in fixing_geom_structure_num:
-                total_velocity[i] *= 1.0e-9
-            new_geometory, dt, n_reset, a = self.FIRE_calc(geometry_num_list, total_force, pre_total_velocity, optimize_num, total_velocity, dt, n_reset, a,  )
-            print(str(dt),str(n_reset),str(a))
+            #------------------
+            if optimize_num < self.sd:
+                total_velocity = self.force2velocity(total_force, element_list)
+                new_geometory, dt, n_reset, a = self.FIRE_calc(geometry_num_list, total_force, pre_total_velocity, optimize_num, total_velocity, dt, n_reset, a)
+                print(str(dt),str(n_reset),str(a))
+            else:
+                new_geometory = self.SD_calc(geometry_num_list, total_force)
+            #------------------
             geometry_list = self.make_geometry_list_2(new_geometory, element_list, electric_charge_and_multiplicity)
             file_directory = self.make_psi4_input_file(geometry_list, optimize_num+1)
  
@@ -580,9 +610,9 @@ class LUP:
         print("\n\n\nLUP: final\n\n\n")
         self.xyz_file_make(file_directory) 
         if args.usextb == "None":
-            energy_list, gradient_list, geometry_num_list, fixing_geom_structure_num, pre_total_velocity = self.psi4_calculation(file_directory, optimize_num,fixing_geom_structure_num,pre_total_velocity )
+            energy_list, gradient_list, geometry_num_list, pre_total_velocity = self.psi4_calculation(file_directory, optimize_num, pre_total_velocity)
         else:
-            energy_list, gradient_list, geometry_num_list, fixing_geom_structure_num, pre_total_velocity = self.tblite_calculation(file_directory, optimize_num,fixing_geom_structure_num,pre_total_velocity, element_number_list )
+            energy_list, gradient_list, geometry_num_list, pre_total_velocity = self.tblite_calculation(file_directory, optimize_num,pre_total_velocity, element_number_list)
             
         geometry_list = self.make_geometry_list_2(new_geometory, element_list, electric_charge_and_multiplicity)
         energy_list = energy_list.tolist()
