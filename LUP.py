@@ -22,7 +22,7 @@ except:
 
 #reference about LUP method:J. Chem. Phys. 94, 751–760 (1991) https://doi.org/10.1063/1.460343
 
-color_list = ["b","g","r","c","m","y","k"] #use for matplotlib
+color_list = ["g"] #use for matplotlib
 
 
 
@@ -76,7 +76,7 @@ class LUP:
         self.FIRE_f_accelerate = 0.99
         self.FIRE_f_decelerate = 0.5
         self.FIRE_a_start = 0.1
-        self.FIRE_dt_max = 5.0
+        self.FIRE_dt_max = 3.0
         self.APPLY_CI_NEB = args.apply_CI_NEB
         self.start_folder = args.INPUT
 
@@ -173,9 +173,9 @@ class LUP:
         
     def sinple_plot(self, num_list, energy_list, file_directory, optimize_num, axis_name_1="NODE #", axis_name_2="Electronic Energy [kcal/mol]", name="energy"):
         fig, ax = plt.subplots()
-        ax.plot(num_list,energy_list*np.array(self.hartree2kcalmol, dtype = "float64"), color_list[random.randint(0,len(color_list)-1)]+"--o" )
+        ax.plot(num_list,energy_list, color_list[random.randint(0,len(color_list)-1)]+"--o" )
 
-        ax.set_title(str(file_directory))
+        ax.set_title(str(optimize_num))
         ax.set_xlabel(axis_name_1)
         ax.set_ylabel(axis_name_2)
         fig.tight_layout()
@@ -244,7 +244,7 @@ class LUP:
 
 
         try:
-            self.sinple_plot(num_list, energy_list, file_directory, optimize_num)
+            self.sinple_plot(num_list, np.array(energy_list, dtype="float64")*self.hartree2kcalmol, file_directory, optimize_num)
             print("energy graph plotted.")
         except Exception as e:
             print(e)
@@ -314,7 +314,7 @@ class LUP:
                     delete_pre_total_velocity.append(num)
             
         try:
-            self.sinple_plot(num_list, energy_list, file_directory, optimize_num)
+            self.sinple_plot(num_list, np.array(energy_list, dtype="float64")*self.hartree2kcalmol, file_directory, optimize_num)
             print("energy graph plotted.")
         except Exception as e:
             print(e)
@@ -369,7 +369,8 @@ class LUP:
         local_min_energy_list_index = local_min_energy_list_index[0].tolist()
         local_max_energy_list_index.append(0)
         local_min_energy_list_index.append(0)
-
+        local_max_energy_list_index.append(0)
+        local_min_energy_list_index.append(0)
         return local_max_energy_list_index, local_min_energy_list_index
 
 
@@ -378,7 +379,6 @@ class LUP:
 
         total_force_list = [((-1)*np.array(gradient_list[0], dtype = "float64")).tolist()]
         for i in range(1,len(energy_list)-1):
-            #print("\n"+str(i)+" step")
             tau_plus, tau_minus, tau = [], [], []
             
             delta_max_energy = np.array(max([(energy_list[i+1]-energy_list[i]),(energy_list[i-1]-energy_list[i])]), dtype = "float64")
@@ -427,8 +427,8 @@ class LUP:
             #print("tau_minus:\n",tau_minus)
             #print("tau_plus:\n",tau_plus)
             #print("tau:\n",str(tau))
+            force_perpendicularity, force_parallelism, force_parallelism_perpendicularity , swiching_double_neb_force = [], [], [], []
             
-            force_perpendicularity = []
             if energy_list[i] == energy_list[local_max_energy_list_index[0]] and self.APPLY_CI_NEB < optimize_num: #CI-NEB
                 for f in range(len(geometry_num_list[i])):
                     force_perpendicularity.append(np.array((-1)*(gradient_list[i][f]-2.0*(np.dot(gradient_list[i][f], tau[f]))*tau[f]), dtype = "float64"))
@@ -436,12 +436,12 @@ class LUP:
                 total_force = np.array(force_perpendicularity, dtype="float64")
                 del local_max_energy_list_index[0]
                 #print(str(total_force))
-            elif energy_list[i] == energy_list[local_min_energy_list_index[0]]: #for discovering intermidiate
-                for f in range(len(geometry_num_list[i])):
-                    force_perpendicularity.append(np.array(((-1)*(gradient_list[i][f])), dtype = "float64"))
-                    #print(str(force_perpendicularity))
-                total_force = np.array(force_perpendicularity, dtype="float64")
-                del local_min_energy_list_index[0]
+            #elif energy_list[i] == energy_list[local_min_energy_list_index[0]]: #for discovering intermidiate
+            #    for f in range(len(geometry_num_list[i])):
+            #        force_perpendicularity.append(np.array(((-1)*(gradient_list[i][f])), dtype = "float64"))
+            #        #print(str(force_perpendicularity))
+            #    total_force = np.array(force_perpendicularity, dtype="float64")
+            #    del local_min_energy_list_index[0]
             else:    
                 for f in range(len(geometry_num_list[i])):
                     grad = 0.0
@@ -451,19 +451,20 @@ class LUP:
                     
                     grad = grad/len(gradient_list[i])
                     
-                    self.spring_constant_k = 0.75*grad
+                    spring_constant_k = 0.001
                     #print("spring_constant:",spring_constant_k)
                     
-
+                    force_parallelism.append(np.array((spring_constant_k*(np.linalg.norm(geometry_num_list[i+1][f]-geometry_num_list[i][f], ord=2))+(-1.0)*spring_constant_k*(np.linalg.norm(geometry_num_list[i][f]-geometry_num_list[i-1][f], ord=2)))*tau[f], dtype = "float64"))  
+                
                     force_perpendicularity.append(np.array(gradient_list[i][f]-(np.dot(gradient_list[i][f], tau[f]))*tau[f], dtype = "float64"))
-                    #doubly nudged elastic band method
+                    #doubly nudged elastic band method :https://doi.org/10.1063/1.1636455
                 
-                    
+                    force_parallelism_perpendicularity.append(np.array(np.array((spring_constant_k*(np.linalg.norm(geometry_num_list[i+1][f]-geometry_num_list[i][f], ord=2))+(-1.0)*spring_constant_k*(np.linalg.norm(geometry_num_list[i][f]-geometry_num_list[i-1][f], ord=2))), dtype = "float64") - (np.dot(np.array((spring_constant_k*(np.linalg.norm(geometry_num_list[i+1][f]-geometry_num_list[i][f], ord=2))+(-1.0)*spring_constant_k*(np.linalg.norm(geometry_num_list[i][f]-geometry_num_list[i-1][f], ord=2))), dtype = "float64"), tau[f]))*tau[f], dtype = "float64"))
                 
-                    
+                    swiching_double_neb_force.append((2.0/np.pi)*np.arctan(np.divide(np.linalg.norm(force_parallelism_perpendicularity[f], ord=2)**2, np.linalg.norm(force_parallelism_perpendicularity[f], ord=2)**2 ,out=np.zeros_like(force_parallelism_perpendicularity[f]) ,where=np.linalg.norm(force_parallelism_perpendicularity[f], ord=2)!=0))*(force_parallelism_perpendicularity[f] - np.dot(force_parallelism_perpendicularity[f],force_perpendicularity[f])*force_perpendicularity[f]))
             
-                force_perpendicularity = np.array(force_perpendicularity, dtype = "float64")
-                total_force = np.array((-1)*force_perpendicularity , dtype = "float64")
+                force_perpendicularity, force_parallelism, force_parallelism_perpendicularity, swiching_double_neb_force = np.array(force_perpendicularity, dtype = "float64"), np.array(force_parallelism, dtype = "float64"),np.array(force_parallelism_perpendicularity, dtype = "float64"), np.array(swiching_double_neb_force, dtype = "float64")
+                total_force = np.array((-1)*force_perpendicularity - force_parallelism - swiching_double_neb_force, dtype = "float64")
             
             if np.nanmean(np.nanmean(total_force)) > 10:
                 total_force = total_force / np.nanmean(np.nanmean(total_force))
@@ -479,7 +480,7 @@ class LUP:
      
 
 
-    def FIRE_calc(self, geometry_num_list, total_force_list, pre_total_velocity, optimize_num, total_velocity, dt, n_reset, a):
+    def FIRE_calc(self, geometry_num_list, total_force_list, pre_total_velocity, optimize_num, total_velocity, dt, n_reset, a, cos_list):
         velocity_neb = []
         
         for num, each_velocity in enumerate(total_velocity):
@@ -521,18 +522,35 @@ class LUP:
         
         #---------------------
         move_vector = [total_delta[0]]
+        trust_radii_1_list = []
+        trust_radii_2_list = []
         
         for i in range(1, len(total_delta)-1):
+            total_delta[i] *= abs(cos_list[i]) ** 0.1
             trust_radii_1 = np.linalg.norm(geometry_num_list[i] - geometry_num_list[i-1]) / 2.0
             trust_radii_2 = np.linalg.norm(geometry_num_list[i] - geometry_num_list[i+1]) / 2.0
+            
+            trust_radii_1_list.append(str(trust_radii_1*2))
+            trust_radii_2_list.append(str(trust_radii_2*2))
+            
+            
             if np.linalg.norm(total_delta[i]) > trust_radii_1:
                 move_vector.append(total_delta[i]*trust_radii_1/np.linalg.norm(total_delta[i]))
             elif np.linalg.norm(total_delta[i]) > trust_radii_2:
                 move_vector.append(total_delta[i]*trust_radii_2/np.linalg.norm(total_delta[i]))
             else:
                 move_vector.append(total_delta[i])
+            
+        with open(self.NEB_FOLDER_DIRECTORY+"Procrustes_distance_1.csv", "a") as f:
+            f.write(",".join(trust_radii_1_list)+"\n")
+        
+        with open(self.NEB_FOLDER_DIRECTORY+"Procrustes_distance_2.csv", "a") as f:
+            f.write(",".join(trust_radii_2_list)+"\n")
+        
         move_vector.append(total_delta[-1])
         #--------------------
+        
+        
         new_geometory = (geometry_num_list + move_vector)*self.bohr2angstroms
          
         return new_geometory, dt, n_reset, a
@@ -568,7 +586,7 @@ class LUP:
         file_directory = self.make_psi4_input_file(geometry_list,0)
         pre_total_velocity = [[[]]]
        
-        #prepare for FIRE method
+        #prepare for FIRE method 
         dt = 0.5
         n_reset = 0
         a = self.FIRE_a_start
@@ -582,7 +600,7 @@ class LUP:
             element_number_list = np.array(element_number_list, dtype="int")
         
         for optimize_num in range(self.NEB_NUM):
-            print("\n\n\nLUP:   "+str(optimize_num+1)+" time(s) \n\n\n")
+            print("\n\n\nLUP:   "+str(optimize_num+1)+" ITR. \n\n\n")
             self.xyz_file_make(file_directory)
             #------------------
             if args.usextb == "None":
@@ -591,13 +609,20 @@ class LUP:
                 energy_list, gradient_list, geometry_num_list, pre_total_velocity = self.tblite_calculation(file_directory, optimize_num,pre_total_velocity, element_number_list)
             #------------------
             
-            total_force = self.LUP_calc(geometry_num_list,energy_list, gradient_list, optimize_num)
+            total_force = self.LUP_calc(geometry_num_list, energy_list, gradient_list, optimize_num)
+            #------------------
+            cos_list = []
+            for i in range(len(total_force)):
+                cos = np.sum(total_force[i]*gradient_list[i])/(np.linalg.norm(total_force[i])*np.linalg.norm(gradient_list[i]))
+                cos_list.append(cos)
+            
+            self.sinple_plot([x for x in range(len(total_force))], cos_list, file_directory, optimize_num, axis_name_1="NODE #", axis_name_2="cosθ", name="orthogonality")
             
             #------------------
             if optimize_num < self.sd:
                 total_velocity = self.force2velocity(total_force, element_list)
-                new_geometory, dt, n_reset, a = self.FIRE_calc(geometry_num_list, total_force, pre_total_velocity, optimize_num, total_velocity, dt, n_reset, a)
-                print(str(dt),str(n_reset),str(a))
+                new_geometory, dt, n_reset, a = self.FIRE_calc(geometry_num_list, total_force, pre_total_velocity, optimize_num, total_velocity, dt, n_reset, a, cos_list)
+                
             else:
                 new_geometory = self.SD_calc(geometry_num_list, total_force)
             #------------------
@@ -605,6 +630,11 @@ class LUP:
             file_directory = self.make_psi4_input_file(geometry_list, optimize_num+1)
  
             pre_total_velocity = total_velocity
+            #------------------
+            with open(self.NEB_FOLDER_DIRECTORY+"energy_plot.csv", "a") as f:
+                f.write(",".join(list(map(str,energy_list.tolist())))+"\n")
+            
+            #------------------
     
         
         print("\n\n\nLUP: final\n\n\n")
