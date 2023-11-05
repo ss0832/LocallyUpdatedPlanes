@@ -216,20 +216,17 @@ class LUP:
                     raise Exception("geometry is abnormal.")
                     #print('geometry:\n'+str(input_data_for_display))            
             
-                e = []      
-                g = np.array(psi4.gradient(self.basic_set_and_function, molecule=input_data), dtype = "float64")
-                with open(input_file[:-4]+".log","r") as f:
-                    word_list = f.readlines()
-                    for word in word_list:
-                        if "    Total Energy =             " in word:
-                            word = word.replace("    Total Energy =             ","")
-                            e.append(float(word))
+               
+                g, wfn = psi4.gradient(self.basic_set_and_function, molecule=input_data, return_wfn=True)
+                g = np.array(g, dtype = "float64")
+                e = float(wfn.energy())
+  
                 #print("gradient:\n"+str(g))
                 print('energy:'+str(e[0])+" a.u.")
 
                 gradient_list.append(g)
                 gradient_norm_list.append(np.linalg.norm(g)/len(g)*3)
-                energy_list.append(e[0])
+                energy_list.append(e)
                 num_list.append(num)
                 geometry_num_list.append(input_data_for_display)
             except Exception as error:
