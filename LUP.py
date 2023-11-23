@@ -222,7 +222,7 @@ class LUP:
                 e = float(wfn.energy())
   
                 #print("gradient:\n"+str(g))
-                print('energy:'+str(e[0])+" a.u.")
+                print('energy:'+str(e)+" a.u.")
 
                 gradient_list.append(g)
                 gradient_norm_list.append(np.linalg.norm(g)/len(g)*3)
