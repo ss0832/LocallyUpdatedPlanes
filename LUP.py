@@ -225,7 +225,7 @@ class LUP:
                 print('energy:'+str(e)+" a.u.")
 
                 gradient_list.append(g)
-                gradient_norm_list.append(np.linalg.norm(g)/len(g)*3)
+                gradient_norm_list.append(np.sqrt(np.linalg.norm(g)**2/(len(g)*3)))#RMS
                 energy_list.append(e)
                 num_list.append(num)
                 geometry_num_list.append(input_data_for_display)
@@ -248,7 +248,7 @@ class LUP:
             print("Can't plot energy graph.")
 
         try:
-            self.sinple_plot(num_list, gradient_norm_list, file_directory, optimize_num, axis_name_1="NODE #", axis_name_2="Gradient [a.u.]", name="gradient")
+            self.sinple_plot(num_list, gradient_norm_list, file_directory, optimize_num, axis_name_1="NODE #", axis_name_2="RMS Gradient [a.u.]", name="gradient")
           
             print("gradient graph plotted.")
         except Exception as e:
@@ -301,7 +301,7 @@ class LUP:
                 print("\n")
                 energy_list.append(e)
                 gradient_list.append(g)
-                gradient_norm_list.append(np.linalg.norm(g)/len(g)*3)
+                gradient_norm_list.append(np.sqrt(np.linalg.norm(g)**2/(len(g)*3)))#RMS
                 geometry_num_list.append(positions)
                 num_list.append(num)
             except Exception as error:
@@ -318,7 +318,7 @@ class LUP:
             print("Can't plot energy graph.")
 
         try:
-            self.sinple_plot(num_list, gradient_norm_list, file_directory, optimize_num, axis_name_1="NODE #", axis_name_2="Gradient [a.u.]", name="gradient")
+            self.sinple_plot(num_list, gradient_norm_list, file_directory, optimize_num, axis_name_1="NODE #", axis_name_2="RMS Gradient [a.u.]", name="gradient")
           
             print("gradient graph plotted.")
         except Exception as e:
@@ -595,9 +595,20 @@ class LUP:
             for elem in element_list:
                 element_number_list.append(element_number(elem))
             element_number_list = np.array(element_number_list, dtype="int")
-        
+        exit_flag = False
         for optimize_num in range(self.NEB_NUM):
-            print("\n\n\nLUP:   "+str(optimize_num+1)+" ITR. \n\n\n")
+            
+            exit_file_detect = glob.glob(self.NEB_FOLDER_DIRECTORY+"*.txt")
+            for file in exit_file_detect:
+                if "end.txt" in file:
+                    exit_flag = True
+                    break
+            if exit_flag:
+                if psi4:
+                    psi4.core.clean()
+                
+                break
+            print("\n\n\nLUP:   "+str(optimize_num)+" ITR. \n\n\n")
             self.xyz_file_make(file_directory)
             #------------------
             if args.usextb == "None":
