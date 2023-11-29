@@ -15,4 +15,4 @@ For example,
 `python LUP.py aldol_rxn -ns 20` (use psi4 module for DFT calculation)
 
 
-`python LUP.py aldol_rxn -ns 50 -xtb GFN2-xTB` (use tblite module for semiemprical QM calculation)
+`python LUP.py aldol_rxn -ns 50 -xtb GFN2-xTB` (use tblite module for semiempirical QM calculation)
