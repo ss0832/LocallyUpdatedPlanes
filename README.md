@@ -1,5 +1,7 @@
 # LocallyUpdatedPlanes
-A program of LUP method for optimization of reaction path. [However, implementation of this program is based on nudged elastic bond (NEB) method. :-(]
+ A program of LUP method for optimization of reaction path. 
+ 
+ However, implementation of this program is based on nudged elastic bond (NEB) method. :-(
 
 ## Required Modules
  - scipy
